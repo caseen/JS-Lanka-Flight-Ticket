@@ -4,7 +4,8 @@ import { extractItineraryData } from './services/geminiService';
 import { ItineraryData } from './types';
 import Itinerary from './components/Itinerary';
 import Editor from './components/Editor';
-import { Upload, Download, FileText, Code, Share2, Loader2, Sparkles, CheckCircle, ArrowRight, Plane, Home } from 'lucide-react';
+// Added AlertCircle to the imports
+import { Upload, Download, FileText, Code, Share2, Loader2, Sparkles, CheckCircle, ArrowRight, Plane, Home, AlertCircle } from 'lucide-react';
 
 const App: React.FC = () => {
   const [data, setData] = useState<ItineraryData | null>(null);
@@ -20,25 +21,30 @@ const App: React.FC = () => {
     setIsLoading(true);
     setError(null);
 
-    try {
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const base64 = e.target?.result as string;
-        try {
-          const extracted = await extractItineraryData(base64, file.type);
-          setData(extracted);
-          setView('itinerary');
-        } catch (err) {
-          setError("Failed to extract data. Please ensure the file is a clear airline e-ticket.");
-        } finally {
-          setIsLoading(false);
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const base64 = e.target?.result as string;
+      try {
+        const extracted = await extractItineraryData(base64, file.type);
+        setData(extracted);
+        setView('itinerary');
+      } catch (err: any) {
+        console.error("Extraction Error details:", err);
+        // Provide more context if it looks like an API key issue
+        if (err.message?.includes('API_KEY') || err.status === 401 || err.status === 403) {
+          setError("API Configuration Error: Please check your Netlify environment variables (API_KEY).");
+        } else {
+          setError("Failed to extract data. Please ensure the file is a clear airline e-ticket and the API key is valid.");
         }
-      };
-      reader.readAsDataURL(file);
-    } catch (err) {
-      setError("An unexpected error occurred during upload.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    reader.onerror = () => {
+      setError("Failed to read the file.");
       setIsLoading(false);
-    }
+    };
+    reader.readAsDataURL(file);
   };
 
   const handlePrint = () => {
@@ -47,6 +53,7 @@ const App: React.FC = () => {
 
   const goHome = () => {
     setData(null);
+    setError(null);
     setView('itinerary');
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -191,8 +198,11 @@ const App: React.FC = () => {
                 </div>
 
                 {error && (
-                  <div className="mt-8 p-4 bg-red-50 text-red-600 rounded-xl border border-red-100 text-sm font-medium animate-bounce">
-                    {error}
+                  <div className="mt-8 p-4 bg-red-50 text-red-600 rounded-xl border border-red-100 text-sm font-medium animate-pulse">
+                    <div className="flex items-center justify-center gap-2">
+                      <AlertCircle size={16} />
+                      {error}
+                    </div>
                   </div>
                 )}
                </div>

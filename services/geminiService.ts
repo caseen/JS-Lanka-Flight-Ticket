@@ -3,92 +3,101 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { ItineraryData } from "../types";
 
 export const extractItineraryData = async (base64Data: string, mimeType: string): Promise<ItineraryData> => {
+  // Always initialize fresh to pick up the latest environment variables
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   const prompt = `
-    You are a world-class AI travel document generator for JS LANKA TRAVELS AND TOURS (PVT) LTD.
-    Analyze the uploaded e-ticket and extract flight information with 100% accuracy.
-    Organize the data into the specified JSON format.
+    Extract flight information from this airline e-ticket for JS LANKA TRAVELS AND TOURS (PVT) LTD.
+    Return ONLY a valid JSON object matching the requested schema.
     
-    Agency Name: JS LANKA TRAVELS AND TOURS (PVT) LTD
-    
-    Extraction Requirements:
-    - Date Format: ALL DATES (issueDate, departureDate, arrivalDate) MUST be formatted as: DAY, DD MMM YYYY (e.g., SUN, 18 FEB 2026). Ensure the day and month are in uppercase.
-    - Multiple Passengers: Extract Name, Title (MR/MRS/etc), Type (MUST BE ONE OF: ADT, CHD, INF), and their specific Ticket Number.
-    - Passenger Type Logic: Identify if the passenger is an Adult (ADT), Child (CHD), or Infant (INF). This is usually written next to the name or in a "Type" column.
-    - Ticket Info: PNR, Main Ticket Number, Issue Date.
-    - Flight Segments: Airline, Flight Number, Airline Reference, Departure/Arrival Airport Codes and Cities, Dates, Times, Terminals, Cabin Class, Baggage, Duration.
-    
-    IMPORTANT: Look closely for (ADT), (CHD), or (INF) tags. Map them correctly to the "type" field. 
-    Ensure titles (MR, MRS, MISS, MSTR) are separated from the names.
-    If any field is missing, leave it as an empty string. Sort segments chronologically.
+    CRITICAL FORMATTING RULES:
+    1. Dates: ALL dates (issueDate, departureDate, arrivalDate) MUST be "DAY, DD MMM YYYY" (e.g., WED, 18 FEB 2026).
+    2. Passenger Types: Map to ADT, CHD, or INF.
+    3. Passengers: Separate Title (MR/MRS/etc) from Name.
+    4. Completeness: Extract PNR, Ticket Numbers, and all flight segments.
   `;
 
-  const response = await ai.models.generateContent({
-    model: "gemini-3-pro-preview",
-    contents: {
-      parts: [
-        { inlineData: { data: base64Data.split(',')[1] || base64Data, mimeType } },
-        { text: prompt }
-      ]
-    },
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          agency: { type: Type.STRING },
-          pnr: { type: Type.STRING },
-          ticketNumber: { type: Type.STRING },
-          issueDate: { type: Type.STRING },
-          passengers: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                name: { type: Type.STRING },
-                title: { type: Type.STRING },
-                type: { type: Type.STRING },
-                ticketNumber: { type: Type.STRING }
-              }
-            }
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: {
+        parts: [
+          { 
+            inlineData: { 
+              data: base64Data.includes(',') ? base64Data.split(',')[1] : base64Data, 
+              mimeType 
+            } 
           },
-          segments: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                airlineName: { type: Type.STRING },
-                flightNumber: { type: Type.STRING },
-                airlineReference: { type: Type.STRING },
-                departureAirportCode: { type: Type.STRING },
-                departureCity: { type: Type.STRING },
-                arrivalAirportCode: { type: Type.STRING },
-                arrivalCity: { type: Type.STRING },
-                departureDate: { type: Type.STRING },
-                departureTime: { type: Type.STRING },
-                arrivalDate: { type: Type.STRING },
-                arrivalTime: { type: Type.STRING },
-                departureTerminal: { type: Type.STRING },
-                arrivalTerminal: { type: Type.STRING },
-                cabinClass: { type: Type.STRING },
-                baggage: { type: Type.STRING },
-                duration: { type: Type.STRING },
-                status: { type: Type.STRING, description: "CONFIRMED, UPCOMING, or COMPLETED" }
+          { text: prompt }
+        ]
+      },
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            agency: { type: Type.STRING },
+            pnr: { type: Type.STRING },
+            ticketNumber: { type: Type.STRING },
+            issueDate: { type: Type.STRING },
+            passengers: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  name: { type: Type.STRING },
+                  title: { type: Type.STRING },
+                  type: { type: Type.STRING },
+                  ticketNumber: { type: Type.STRING }
+                },
+                required: ["name", "title"]
               }
-            }
+            },
+            segments: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  airlineName: { type: Type.STRING },
+                  flightNumber: { type: Type.STRING },
+                  airlineReference: { type: Type.STRING },
+                  departureAirportCode: { type: Type.STRING },
+                  departureCity: { type: Type.STRING },
+                  arrivalAirportCode: { type: Type.STRING },
+                  arrivalCity: { type: Type.STRING },
+                  departureDate: { type: Type.STRING },
+                  departureTime: { type: Type.STRING },
+                  arrivalDate: { type: Type.STRING },
+                  arrivalTime: { type: Type.STRING },
+                  departureTerminal: { type: Type.STRING },
+                  arrivalTerminal: { type: Type.STRING },
+                  cabinClass: { type: Type.STRING },
+                  baggage: { type: Type.STRING },
+                  duration: { type: Type.STRING },
+                  status: { type: Type.STRING }
+                }
+              }
+            },
+            status: { type: Type.STRING }
           },
-          status: { type: Type.STRING }
+          required: ["passengers", "segments"]
         }
       }
-    }
-  });
+    });
 
-  try {
-    const data = JSON.parse(response.text);
-    return data as ItineraryData;
-  } catch (error) {
-    console.error("Failed to parse Gemini response", error);
-    throw new Error("Could not extract data from the document.");
+    const text = response.text;
+    if (!text) {
+      throw new Error("Empty response from AI model.");
+    }
+
+    try {
+      return JSON.parse(text) as ItineraryData;
+    } catch (parseError) {
+      console.error("JSON Parsing failed. Raw text:", text);
+      throw new Error("Failed to parse itinerary data.");
+    }
+  } catch (apiError: any) {
+    console.error("Gemini API Error:", apiError);
+    throw apiError;
   }
 };
